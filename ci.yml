@@ -1,4 +1,4 @@
-# CI for net-tester (Go, no CGO, stdlib only)
+# CI for net-tester (Go, no CGO; engine is stdlib-only, GUI uses lxn/walk)
 #
 # This file ships at the repo root; move it to .github/workflows/ci.yml
 # via the website to enable it.
@@ -28,9 +28,12 @@ jobs:
         run: go vet ./...
       - name: Test
         run: go test ./...
-      - name: Build Windows binary
+      # Visual-styles manifest for the GUI exe (best effort: a
+      # build without it still works, with classic controls).
+      - name: Embed GUI manifest
         if: matrix.os == 'windows-latest'
-        run: go build -o net-tester-windows-amd64.exe ./cmd/net-tester
+        continue-on-error: true
+        run: go run github.com/akavel/rsrc@v0.10.2 -manifest cmd/net-tester-gui/net-tester-gui.manifest -o cmd/net-tester-gui/rsrc.syso
       - name: Build Windows GUI binary
         if: matrix.os == 'windows-latest'
         run: go build -trimpath -ldflags="-s -w -H windowsgui" -o net-tester-gui-windows-amd64.exe ./cmd/net-tester-gui

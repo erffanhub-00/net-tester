@@ -35,6 +35,7 @@ func ping(ctx context.Context, t config.Target, packets int, timeout time.Durati
 		return r
 	}
 	cmd := exec.CommandContext(ctx, "ping", args...)
+	hidePingWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	text := string(out)
 

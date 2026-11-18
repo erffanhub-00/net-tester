@@ -21,91 +21,104 @@ func (a *app) testTabPage() TabPage {
 		Title:  "Test",
 		Layout: VBox{},
 		Children: []Widget{
-			Composite{
-				Layout: HBox{},
+			// The whole tab scrolls, so every control stays
+			// reachable when the window is small or the display
+			// is scaled. The results table keeps its own
+			// scrollbar for long runs; it gets a fixed viewport
+			// height here because stretch is ignored inside a
+			// scroll view.
+			ScrollView{
+				Layout: VBox{},
 				Children: []Widget{
-					GroupBox{
-						Title:  "Categories",
-						Layout: VBox{},
+					Composite{
+						Layout: HBox{},
 						Children: []Widget{
-							ListBox{
-								AssignTo:       &a.catList,
-								Model:          a.catModel,
-								MultiSelection: true,
-								MinSize:        Size{Width: 200, Height: 120},
-								OnCurrentIndexChanged: func() {
-									a.refreshTargets()
+							GroupBox{
+								Title:  "Categories",
+								Layout: VBox{},
+								Children: []Widget{
+									ListBox{
+										AssignTo:       &a.catList,
+										Model:          a.catModel,
+										MultiSelection: true,
+										MinSize:        Size{Width: 200, Height: 120},
+										OnCurrentIndexChanged: func() {
+											a.refreshTargets()
+										},
+									},
+									Composite{
+										Layout: HBox{},
+										Children: []Widget{
+											PushButton{Text: "Add category", OnClicked: func() { a.addCategory() }},
+											PushButton{Text: "Delete", OnClicked: func() { a.deleteCategory() }},
+										},
+									},
 								},
 							},
-							Composite{
-								Layout: HBox{},
+							GroupBox{
+								Title:  "Targets",
+								Layout: VBox{},
 								Children: []Widget{
-									PushButton{Text: "Add category", OnClicked: func() { a.addCategory() }},
-									PushButton{Text: "Delete", OnClicked: func() { a.deleteCategory() }},
+									ListBox{
+										AssignTo: &a.tgtList,
+										Model:    a.tgtModel,
+										MinSize:  Size{Width: 300, Height: 120},
+									},
+									Composite{
+										Layout: HBox{},
+										Children: []Widget{
+											PushButton{Text: "Add target", OnClicked: func() { a.addTarget() }},
+											PushButton{Text: "Edit", OnClicked: func() { a.editTarget() }},
+											PushButton{Text: "Delete", OnClicked: func() { a.deleteTarget() }},
+											PushButton{Text: "Import...", OnClicked: func() { a.importDialog() }},
+										},
+									},
 								},
 							},
 						},
 					},
 					GroupBox{
-						Title:  "Targets",
-						Layout: VBox{},
+						Title:  "Settings",
+						Layout: Grid{Columns: 10},
 						Children: []Widget{
-							ListBox{
-								AssignTo: &a.tgtList,
-								Model:    a.tgtModel,
-								MinSize:  Size{Width: 300, Height: 120},
-							},
-							Composite{
-								Layout: HBox{},
-								Children: []Widget{
-									PushButton{Text: "Add target", OnClicked: func() { a.addTarget() }},
-									PushButton{Text: "Edit", OnClicked: func() { a.editTarget() }},
-									PushButton{Text: "Delete", OnClicked: func() { a.deleteTarget() }},
-								},
-							},
+							Label{Text: "Packets:"},
+							// NOTE: walk's NumberEdit Value is a Property
+							// (interface{}), and its setter only accepts
+							// float64 — an int literal silently becomes 0,
+							// which is out of range and crashes window
+							// creation ("value out of range"). So every
+							// Value here must be float64, not a bare int.
+							NumberEdit{AssignTo: &a.packetsEdit, Value: float64(10), MinValue: 1, MaxValue: 200},
+							Label{Text: "Workers:"},
+							NumberEdit{AssignTo: &a.workersEdit, Value: float64(10), MinValue: 1, MaxValue: 50},
+							Label{Text: "Ping timeout (ms):"},
+							NumberEdit{AssignTo: &a.pingTimeoutEdit, Value: float64(2000), MinValue: 100, MaxValue: 60000},
+							Label{Text: "TCP timeout (ms):"},
+							NumberEdit{AssignTo: &a.tcpTimeoutEdit, Value: float64(3000), MinValue: 100, MaxValue: 60000},
+							Label{Text: "HTTP timeout (ms):"},
+							NumberEdit{AssignTo: &a.httpTimeoutEdit, Value: float64(5000), MinValue: 100, MaxValue: 60000},
 						},
 					},
+					Composite{
+						Layout: HBox{},
+						Children: []Widget{
+							PushButton{AssignTo: &a.runBtn, Text: "Run", OnClicked: func() { a.onRun() }},
+							PushButton{AssignTo: &a.stopBtn, Text: "Stop", Enabled: false, OnClicked: func() { a.onStop() }},
+							PushButton{AssignTo: &a.exportBtn, Text: "Export CSV + JSON...", OnClicked: func() { a.onExport() }},
+							HSpacer{},
+						},
+					},
+					TableView{
+						AssignTo:      &a.resultsView,
+						Model:         a.resultsModel,
+						Columns:       resultColumns,
+						MinSize:       Size{Width: 0, Height: 260},
+						StretchFactor: 1,
+					},
+					Label{AssignTo: &a.statusLabel, Text: "Select one or more categories and press Run."},
+					Label{AssignTo: &a.netLabel, Text: ""},
 				},
 			},
-			GroupBox{
-				Title:  "Settings",
-				Layout: Grid{Columns: 10},
-				Children: []Widget{
-					Label{Text: "Packets:"},
-					// NOTE: walk's NumberEdit Value is a Property
-					// (interface{}), and its setter only accepts
-					// float64 — an int literal silently becomes 0,
-					// which is out of range and crashes window
-					// creation ("value out of range"). So every
-					// Value here must be float64, not a bare int.
-					NumberEdit{AssignTo: &a.packetsEdit, Value: float64(10), MinValue: 1, MaxValue: 200},
-					Label{Text: "Workers:"},
-					NumberEdit{AssignTo: &a.workersEdit, Value: float64(10), MinValue: 1, MaxValue: 50},
-					Label{Text: "Ping timeout (ms):"},
-					NumberEdit{AssignTo: &a.pingTimeoutEdit, Value: float64(2000), MinValue: 100, MaxValue: 60000},
-					Label{Text: "TCP timeout (ms):"},
-					NumberEdit{AssignTo: &a.tcpTimeoutEdit, Value: float64(3000), MinValue: 100, MaxValue: 60000},
-					Label{Text: "HTTP timeout (ms):"},
-					NumberEdit{AssignTo: &a.httpTimeoutEdit, Value: float64(5000), MinValue: 100, MaxValue: 60000},
-				},
-			},
-			Composite{
-				Layout: HBox{},
-				Children: []Widget{
-					PushButton{AssignTo: &a.runBtn, Text: "Run", OnClicked: func() { a.onRun() }},
-					PushButton{AssignTo: &a.stopBtn, Text: "Stop", Enabled: false, OnClicked: func() { a.onStop() }},
-					PushButton{AssignTo: &a.exportBtn, Text: "Export CSV + JSON...", OnClicked: func() { a.onExport() }},
-					HSpacer{},
-				},
-			},
-			TableView{
-				AssignTo:      &a.resultsView,
-				Model:         a.resultsModel,
-				Columns:       resultColumns,
-				StretchFactor: 1,
-			},
-			Label{AssignTo: &a.statusLabel, Text: "Select one or more categories and press Run."},
-			Label{AssignTo: &a.netLabel, Text: ""},
 		},
 	}
 }
@@ -167,6 +180,7 @@ func (a *app) onRun() {
 	opts := a.optionsFromUI()
 	a.results = nil
 	a.resultsModel.SetResults(nil)
+	a.refreshRanking(nil)
 	a.statusLabel.SetText(fmt.Sprintf("Testing %d targets...", len(targets)))
 	a.setRunning(true)
 
@@ -213,6 +227,7 @@ func (a *app) runTargets(ctx context.Context, seq int, targets []config.Target, 
 					return
 				}
 				a.resultsModel.SetResults(snap)
+				a.refreshRanking(snap)
 				a.statusLabel.SetText(fmt.Sprintf("Testing... %d/%d done.", finished, total))
 			})
 		}(t)
@@ -226,6 +241,7 @@ func (a *app) runTargets(ctx context.Context, seq int, targets []config.Target, 
 			return
 		}
 		a.resultsModel.SetResults(final)
+		a.refreshRanking(final)
 		a.setRunning(false)
 		a.statusLabel.SetText(summaryLine(final))
 	})

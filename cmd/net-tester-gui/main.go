@@ -2,8 +2,7 @@
 
 // Command net-tester-gui is the graphical interface for net-tester:
 // a live results table, in-app settings and category/target editing,
-// export on demand, and a live ping monitor. It shares the engine
-// with the CLI, so measurements behave identically.
+// export on demand, a live ping monitor and a ranking table.
 package main
 
 import (
@@ -21,7 +20,7 @@ import (
 	. "github.com/lxn/walk/declarative"
 )
 
-const version = "2.0.0"
+const version = "2.2.0"
 
 type app struct {
 	mw      *walk.MainWindow
@@ -53,21 +52,27 @@ type app struct {
 	results    []*engine.Result
 	exportCats string
 
+	// Ranking tab.
+	rankingModel *rankingModel
+	rankingView  *walk.TableView
+	rankingLabel *walk.Label
+
 	// Live Ping tab.
-	pingHostEdit  *walk.LineEdit
-	pingStartBtn  *walk.PushButton
-	pingStopBtn   *walk.PushButton
-	pingNoteLabel *walk.Label
-	pingStatsLbl  *walk.Label
-	pingListModel *stringListModel
-	pingList      *walk.ListBox
-	pingGraph     *walk.CustomWidget
-	pingCancel    context.CancelFunc
-	pingRunning   bool
-	pingMu        sync.Mutex
-	pingStats     engine.LivePingStats
-	pingLines     []string
-	pingLatencies []float64 // last 60 reply latencies, ms
+	pingHostEdit   *walk.LineEdit
+	pingStartBtn   *walk.PushButton
+	pingStopBtn    *walk.PushButton
+	pingCurrentLbl *walk.Label
+	pingNoteLabel  *walk.Label
+	pingStatsLbl   *walk.Label
+	pingListModel  *stringListModel
+	pingList       *walk.ListBox
+	pingGraph      *walk.CustomWidget
+	pingCancel     context.CancelFunc
+	pingRunning    bool
+	pingMu         sync.Mutex
+	pingStats      engine.LivePingStats
+	pingLines      []string
+	pingLatencies  []float64 // last 60 reply latencies, ms
 }
 
 func main() {
@@ -94,13 +99,13 @@ func (a *app) init() error {
 	a.catModel = &stringListModel{items: a.cfg.Names()}
 	a.tgtModel = &stringListModel{}
 	a.resultsModel = &resultsModel{}
+	a.rankingModel = &rankingModel{}
 	a.pingListModel = &stringListModel{}
 	return nil
 }
 
-// configPath is categories.json next to the exe (the same file the
-// CLI uses when run from that folder); it falls back to the working
-// directory when the exe path cannot be determined.
+// configPath is categories.json next to the exe; it falls back to
+// the working directory when the exe path cannot be determined.
 func configPath() string {
 	if exe, err := os.Executable(); err == nil {
 		return filepath.Join(filepath.Dir(exe), "categories.json")
@@ -139,6 +144,7 @@ func (a *app) createWindow() error {
 				Pages: []TabPage{
 					a.testTabPage(),
 					a.livePingTabPage(),
+					a.rankingTabPage(),
 				},
 			},
 		},

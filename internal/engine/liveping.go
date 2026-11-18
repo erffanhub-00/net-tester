@@ -82,6 +82,7 @@ func LivePingArgs(host string) []string {
 // responsive: StreamPing blocks, so run it on a goroutine.
 func StreamPing(ctx context.Context, host string, onLine func(string)) error {
 	cmd := exec.CommandContext(ctx, "ping", LivePingArgs(host)...)
+	hidePingWindow(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err

@@ -21,31 +21,52 @@ func (a *app) livePingTabPage() TabPage {
 		Title:  "Live Ping",
 		Layout: VBox{},
 		Children: []Widget{
-			Composite{
-				Layout: HBox{},
+			// The whole tab scrolls, so every control stays
+			// reachable when the window is small or the display
+			// is scaled; the list and graph keep their own
+			// scrollbars for long runs.
+			ScrollView{
+				Layout: VBox{},
 				Children: []Widget{
-					Label{Text: "Host:"},
-					LineEdit{AssignTo: &a.pingHostEdit, Text: "google.com"},
-					PushButton{AssignTo: &a.pingStartBtn, Text: "Start", OnClicked: func() { a.onPingStart() }},
-					PushButton{AssignTo: &a.pingStopBtn, Text: "Stop", Enabled: false, OnClicked: func() { a.onPingStop() }},
-					HSpacer{},
+					Composite{
+						Layout: HBox{},
+						Children: []Widget{
+							Label{Text: "Host:"},
+							LineEdit{AssignTo: &a.pingHostEdit, Text: "google.com"},
+							PushButton{AssignTo: &a.pingStartBtn, Text: "Start", OnClicked: func() { a.onPingStart() }},
+							PushButton{AssignTo: &a.pingStopBtn, Text: "Stop", Enabled: false, OnClicked: func() { a.onPingStop() }},
+							HSpacer{},
+						},
+					},
+					// The current ping, big: the one number the
+					// tab is about. "—" before the first reply,
+					// "timeout" when a reply is missed.
+					Label{AssignTo: &a.pingCurrentLbl, Text: "Current: —", Font: Font{Family: "Segoe UI", PointSize: 22, Bold: true}},
+					Label{AssignTo: &a.pingNoteLabel, Text: ""},
+					Label{AssignTo: &a.pingStatsLbl, Text: "Not running."},
+					CustomWidget{
+						AssignTo: &a.pingGraph,
+						MinSize:  Size{Width: 0, Height: 180},
+						Paint:    a.paintGraph,
+					},
+					ListBox{
+						AssignTo:      &a.pingList,
+						Model:         a.pingListModel,
+						MinSize:       Size{Width: 0, Height: 140},
+						StretchFactor: 1,
+					},
 				},
-			},
-			Label{AssignTo: &a.pingNoteLabel, Text: ""},
-			Label{AssignTo: &a.pingStatsLbl, Text: "Not running."},
-			CustomWidget{
-				AssignTo: &a.pingGraph,
-				MinSize:  Size{Width: 0, Height: 180},
-				Paint:    a.paintGraph,
-			},
-			ListBox{
-				AssignTo:      &a.pingList,
-				Model:         a.pingListModel,
-				MinSize:       Size{Width: 0, Height: 140},
-				StretchFactor: 1,
 			},
 		},
 	}
+}
+
+// formatCurrentPing renders the big current-ping readout.
+func formatCurrentPing(ms float64) string {
+	if ms < 1 {
+		return "Current: <1 ms"
+	}
+	return fmt.Sprintf("Current: %.0f ms", ms)
 }
 
 func (a *app) onPingStart() {
@@ -63,6 +84,7 @@ func (a *app) onPingStart() {
 	a.pingLatencies = nil
 	a.pingMu.Unlock()
 	a.pingListModel.SetItems(nil)
+	a.pingCurrentLbl.SetText("Current: —")
 	a.pingStatsLbl.SetText("Pinging " + host + "...")
 	a.pingStartBtn.SetEnabled(false)
 	a.pingStopBtn.SetEnabled(true)
@@ -100,14 +122,17 @@ func (a *app) onPingLine(line string) {
 		return
 	}
 	a.pingMu.Lock()
+	var currentText string
 	if ms, ok := engine.ParsePingReplyLine(line); ok {
 		a.pingStats.AddReply(ms)
 		a.pingLatencies = append(a.pingLatencies, ms)
 		if len(a.pingLatencies) > maxPingLatencies {
 			a.pingLatencies = a.pingLatencies[len(a.pingLatencies)-maxPingLatencies:]
 		}
+		currentText = formatCurrentPing(ms)
 	} else if isPingMissLine(line) {
 		a.pingStats.AddMiss()
+		currentText = "Current: timeout"
 	}
 	a.pingLines = append(a.pingLines, line)
 	if len(a.pingLines) > maxPingLines {
@@ -121,6 +146,9 @@ func (a *app) onPingLine(line string) {
 		a.pingListModel.SetItems(lines)
 		if len(lines) > 0 {
 			_ = a.pingList.SetCurrentIndex(len(lines) - 1)
+		}
+		if currentText != "" {
+			a.pingCurrentLbl.SetText(currentText)
 		}
 		a.pingStatsLbl.SetText(formatPingStats(&stats))
 		_ = a.pingGraph.Invalidate()
