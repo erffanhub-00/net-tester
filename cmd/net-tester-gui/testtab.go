@@ -72,15 +72,21 @@ func (a *app) testTabPage() TabPage {
 				Layout: Grid{Columns: 10},
 				Children: []Widget{
 					Label{Text: "Packets:"},
-					NumberEdit{AssignTo: &a.packetsEdit, Value: 10, MinValue: 1, MaxValue: 200},
+					// NOTE: walk's NumberEdit Value is a Property
+					// (interface{}), and its setter only accepts
+					// float64 — an int literal silently becomes 0,
+					// which is out of range and crashes window
+					// creation ("value out of range"). So every
+					// Value here must be float64, not a bare int.
+					NumberEdit{AssignTo: &a.packetsEdit, Value: float64(10), MinValue: 1, MaxValue: 200},
 					Label{Text: "Workers:"},
-					NumberEdit{AssignTo: &a.workersEdit, Value: 10, MinValue: 1, MaxValue: 50},
+					NumberEdit{AssignTo: &a.workersEdit, Value: float64(10), MinValue: 1, MaxValue: 50},
 					Label{Text: "Ping timeout (ms):"},
-					NumberEdit{AssignTo: &a.pingTimeoutEdit, Value: 2000, MinValue: 100, MaxValue: 60000},
+					NumberEdit{AssignTo: &a.pingTimeoutEdit, Value: float64(2000), MinValue: 100, MaxValue: 60000},
 					Label{Text: "TCP timeout (ms):"},
-					NumberEdit{AssignTo: &a.tcpTimeoutEdit, Value: 3000, MinValue: 100, MaxValue: 60000},
+					NumberEdit{AssignTo: &a.tcpTimeoutEdit, Value: float64(3000), MinValue: 100, MaxValue: 60000},
 					Label{Text: "HTTP timeout (ms):"},
-					NumberEdit{AssignTo: &a.httpTimeoutEdit, Value: 5000, MinValue: 100, MaxValue: 60000},
+					NumberEdit{AssignTo: &a.httpTimeoutEdit, Value: float64(5000), MinValue: 100, MaxValue: 60000},
 				},
 			},
 			Composite{
