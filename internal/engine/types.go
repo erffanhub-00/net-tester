@@ -84,6 +84,9 @@ type Result struct {
 	Rank     int     `json:"rank"` // 0 = unranked (failed)
 	Duration float64 `json:"duration_ms"`
 	Error    string  `json:"error,omitempty"`
+	// Note is an advisory remark, e.g. the ICMP hint when a host
+	// answers on other methods but ping fails.
+	Note string `json:"note,omitempty"`
 }
 
 // Failed reports whether the target produced no usable sample.

@@ -117,3 +117,58 @@ func TestExportCreatesDir(t *testing.T) {
 		t.Fatalf("Export should create the dir: %v", err)
 	}
 }
+
+func TestExportWithNetwork(t *testing.T) {
+	dir := t.TempDir()
+	nc := engine.NetworkContext{
+		ProxyEnv:      "http://proxy.example:8080",
+		VPNInterfaces: []string{"tun0"},
+	}
+	// ProxySource needs the env var name; same package, so the
+	// unexported field can be set directly in the test.
+	_, jsonPath, err := ExportWithNetwork(dir, "cdn", sampleResults(), nc)
+	if err != nil {
+		t.Fatalf("ExportWithNetwork: %v", err)
+	}
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Network *struct {
+			ProxyActive   bool     `json:"proxy_active"`
+			ProxySource   string   `json:"proxy_source"`
+			VPNInterfaces []string `json:"vpn_interfaces"`
+			Notes         []string `json:"notes"`
+		} `json:"network"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("json parse: %v", err)
+	}
+	if doc.Network == nil {
+		t.Fatal("json has no network object")
+	}
+	if !doc.Network.ProxyActive || len(doc.Network.VPNInterfaces) != 1 || doc.Network.VPNInterfaces[0] != "tun0" {
+		t.Fatalf("network = %+v", doc.Network)
+	}
+	if len(doc.Network.Notes) != 2 {
+		t.Fatalf("notes = %v, want VPN + proxy notes", doc.Network.Notes)
+	}
+
+	// Plain Export omits the network object entirely.
+	_, jsonPath2, err := Export(dir, "cdn", sampleResults())
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	data, err = os.ReadFile(jsonPath2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc2 jsonDoc
+	if err := json.Unmarshal(data, &doc2); err != nil {
+		t.Fatalf("json parse: %v", err)
+	}
+	if doc2.Network != nil {
+		t.Fatalf("plain Export should omit network, got %+v", doc2.Network)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -71,11 +72,7 @@ func httpTest(ctx context.Context, t config.Target, o Options) *Result {
 			dialMs = time.Since(start).Seconds() * 1000
 			return conn, err
 		},
-	}
-	if o.Proxy != "" {
-		if pu, err := url.Parse(o.Proxy); err == nil {
-			transport.Proxy = http.ProxyURL(pu)
-		}
+		Proxy: proxyFor(o),
 	}
 	client := &http.Client{Transport: transport, Timeout: o.HTTPTimeout}
 
@@ -159,6 +156,98 @@ func avgOf(xs []float64) float64 {
 		sum += x
 	}
 	return sum / float64(len(xs))
+}
+
+// proxyFor returns the proxy function for the transport: the -proxy
+// flag wins; otherwise the proxy environment variables are
+// honoured. An invalid flag URL disables the proxy rather than
+// failing the run.
+func proxyFor(o Options) func(*http.Request) (*url.URL, error) {
+	if strings.TrimSpace(o.Proxy) != "" {
+		if pu, err := url.Parse(strings.TrimSpace(o.Proxy)); err == nil {
+			return http.ProxyURL(pu)
+		}
+		return nil
+	}
+	return proxyFromEnv
+}
+
+// proxyFromEnv resolves the proxy from the environment for req,
+// with the same scheme rules as http.ProxyFromEnvironment: an
+// https URL uses HTTPS_PROXY, an http URL uses HTTP_PROXY, and
+// ALL_PROXY is the fallback for either. NO_PROXY bypasses the
+// proxy, and loopback is always direct.
+//
+// It reads the environment on every call. The standard library's
+// ProxyFromEnvironment caches the configuration once per process,
+// so it would miss environment changes and cannot be tested with
+// t.Setenv; this keeps the same observable behaviour without the
+// cache.
+func proxyFromEnv(req *http.Request) (*url.URL, error) {
+	if req == nil || req.URL == nil {
+		return nil, nil
+	}
+	host := req.URL.Hostname()
+	if host == "" || isLoopbackHost(host) || noProxyMatch(host) {
+		return nil, nil
+	}
+	var raw string
+	switch req.URL.Scheme {
+	case "https":
+		raw = firstProxyEnv("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")
+	default:
+		raw = firstProxyEnv("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy")
+	}
+	if raw == "" {
+		return nil, nil
+	}
+	return url.Parse(raw)
+}
+
+func firstProxyEnv(names ...string) string {
+	for _, name := range names {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
+// noProxyMatch reports whether host is listed in NO_PROXY
+// (comma-separated, exact or suffix match, "*" matches all).
+func noProxyMatch(host string) bool {
+	raw := firstProxyEnv("NO_PROXY", "no_proxy")
+	if raw == "" {
+		return false
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.ToLower(strings.TrimSpace(entry))
+		if entry == "" {
+			continue
+		}
+		if entry == "*" {
+			return true
+		}
+		// An entry may carry a port; compare hosts only.
+		if h, _, err := net.SplitHostPort(entry); err == nil {
+			entry = h
+		}
+		if host == entry || strings.HasSuffix(host, "."+entry) {
+			return true
+		}
+	}
+	return false
 }
 
 // dominantStatus returns the most common status code.

@@ -21,7 +21,7 @@ import (
 	"github.com/erffanhub-00/net-tester/internal/report"
 )
 
-const version = "1.0.0"
+const version = "2.0.0"
 
 func main() {
 	setupConsole()
@@ -66,17 +66,27 @@ func main() {
 		os.Exit(2)
 	}
 
+	// Network context (proxy / VPN): detected once, noted once per
+	// run on stderr so scripted stdout stays clean.
+	nc := engine.DetectNetworkContext(*proxyFlag)
+	for _, note := range nc.Notes() {
+		fmt.Fprintf(os.Stderr, "note: %s\n", note)
+	}
+
 	report.ColorEnabled = useColor(*quietFlag)
 
 	ctx := context.Background()
 	if *noMenuFlag {
-		os.Exit(runCLI(ctx, cfg, opts, *categoryFlag, *outputFlag, *quietFlag))
+		os.Exit(runCLI(ctx, cfg, opts, *categoryFlag, *outputFlag, *quietFlag, nc))
 	}
 	if *categoryFlag != "" {
 		fmt.Fprintln(os.Stderr, "note: -category is only used with -no-menu; starting the interactive menu")
 	}
+	exporter := func(dir, cat string, res []*engine.Result) (string, string, error) {
+		return report.ExportWithNetwork(dir, cat, res, nc)
+	}
 	os.Exit(menu.Run(ctx, cfg, opts, *outputFlag, os.Stdin, os.Stdout,
-		engine.RunTargets, report.Export))
+		engine.RunTargets, exporter))
 }
 
 func buildOptions(packets, workers, pingMs, tcpMs, httpMs, dnsMs int, proxy string) (engine.Options, error) {
@@ -119,7 +129,7 @@ func loadConfig(flagPath string) (*config.File, error) {
 }
 
 // runCLI is the non-interactive mode: -no-menu -category <names>.
-func runCLI(ctx context.Context, cfg *config.File, o engine.Options, categoryFlag, outDir string, quiet bool) int {
+func runCLI(ctx context.Context, cfg *config.File, o engine.Options, categoryFlag, outDir string, quiet bool, nc engine.NetworkContext) int {
 	if strings.TrimSpace(categoryFlag) == "" {
 		fmt.Fprintln(os.Stderr, "error: -no-menu requires -category (e.g. -category cdn or -category all)")
 		return 2
@@ -157,7 +167,7 @@ func runCLI(ctx context.Context, cfg *config.File, o engine.Options, categoryFla
 		report.Chart(os.Stdout, results)
 		report.Summary(os.Stdout, results)
 	}
-	csvPath, jsonPath, err := report.Export(outDir, catName, results)
+	csvPath, jsonPath, err := report.ExportWithNetwork(outDir, catName, results, nc)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "export failed: %v\n", err)
 		return 1

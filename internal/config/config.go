@@ -121,6 +121,19 @@ func Parse(data []byte) (*File, error) {
 	return &f, nil
 }
 
+// Save writes the categories file as indented JSON. The GUI uses
+// it when the user edits categories or targets in the window.
+func Save(path string, f *File) error {
+	data, err := json.MarshalIndent(f, "", "  ")
+	if err != nil {
+		return fmt.Errorf("cannot encode config: %w", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("cannot write config %q: %w", path, err)
+	}
+	return nil
+}
+
 // ValidateTarget checks one target. Method is normalized to lowercase.
 func ValidateTarget(t *Target) error {
 	t.Host = strings.TrimSpace(t.Host)

@@ -175,8 +175,27 @@ func formatDistribution(dist map[int]int) string {
 }
 
 // Export writes timestamped CSV and JSON files to dir and returns
-// the two file paths. The directory is created if needed.
+// the two file paths. The directory is created if needed. The JSON
+// carries no network context; use ExportWithNetwork when one was
+// detected for the run.
 func Export(dir, category string, results []*engine.Result) (csvPath, jsonPath string, err error) {
+	return ExportWithNetwork(dir, category, results, engine.NetworkContext{})
+}
+
+// networkDoc is the "network" object in the JSON export: what the
+// run went through. The raw proxy URL is never written (it may
+// contain credentials); only whether a proxy was active and where
+// it came from.
+type networkDoc struct {
+	ProxyActive   bool     `json:"proxy_active"`
+	ProxySource   string   `json:"proxy_source,omitempty"`
+	VPNInterfaces []string `json:"vpn_interfaces,omitempty"`
+	Notes         []string `json:"notes,omitempty"`
+}
+
+// ExportWithNetwork is Export, plus the detected network context
+// (proxy / VPN interfaces) and its run-level notes in the JSON.
+func ExportWithNetwork(dir, category string, results []*engine.Result, nc engine.NetworkContext) (csvPath, jsonPath string, err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", "", fmt.Errorf("cannot create output dir: %w", err)
 	}
@@ -184,10 +203,10 @@ func Export(dir, category string, results []*engine.Result) (csvPath, jsonPath s
 	base := "net-tester_" + category + "_" + stamp
 	csvPath = filepath.Join(dir, base+".csv")
 	jsonPath = filepath.Join(dir, base+".json")
-	if err := writeCSV(csvPath, results); err != nil {
+	if err := WriteCSV(csvPath, results); err != nil {
 		return "", "", err
 	}
-	if err := writeJSON(jsonPath, category, results); err != nil {
+	if err := WriteJSON(jsonPath, category, results, nc); err != nil {
 		return "", "", err
 	}
 	return csvPath, jsonPath, nil
@@ -201,7 +220,9 @@ var csvHeader = []string{
 	"http_status", "tls_valid",
 }
 
-func writeCSV(path string, results []*engine.Result) error {
+// WriteCSV writes the results table to path. Export uses it for
+// the timestamped file; the GUI uses it for the export dialog.
+func WriteCSV(path string, results []*engine.Result) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("cannot create CSV: %w", err)
@@ -236,14 +257,27 @@ func writeCSV(path string, results []*engine.Result) error {
 type jsonDoc struct {
 	Category  string           `json:"category"`
 	Generated string           `json:"generated_at"`
+	Network   *networkDoc      `json:"network,omitempty"`
 	Results   []*engine.Result `json:"results"`
 }
 
-func writeJSON(path, category string, results []*engine.Result) error {
+// WriteJSON writes the results document to path. Export uses it
+// for the timestamped file; the GUI uses it for the export dialog.
+// nc is included as the top-level "network" object; pass an empty
+// NetworkContext to omit it.
+func WriteJSON(path, category string, results []*engine.Result, nc engine.NetworkContext) error {
 	doc := jsonDoc{
 		Category:  category,
 		Generated: time.Now().UTC().Format(time.RFC3339),
 		Results:   results,
+	}
+	if nc.ProxyActive() || len(nc.VPNInterfaces) > 0 {
+		doc.Network = &networkDoc{
+			ProxyActive:   nc.ProxyActive(),
+			ProxySource:   nc.ProxySource(),
+			VPNInterfaces: nc.VPNInterfaces,
+			Notes:         nc.Notes(),
+		}
 	}
 	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {

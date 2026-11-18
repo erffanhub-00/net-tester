@@ -31,3 +31,6 @@ jobs:
       - name: Build Windows binary
         if: matrix.os == 'windows-latest'
         run: go build -o net-tester-windows-amd64.exe ./cmd/net-tester
+      - name: Build Windows GUI binary
+        if: matrix.os == 'windows-latest'
+        run: go build -trimpath -ldflags="-s -w -H windowsgui" -o net-tester-gui-windows-amd64.exe ./cmd/net-tester-gui

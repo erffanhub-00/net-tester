@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -96,5 +97,26 @@ func TestValidateTarget(t *testing.T) {
 func TestLoadMissingFile(t *testing.T) {
 	if _, err := Load("/nonexistent/categories.json"); err == nil {
 		t.Fatal("expected error for missing file")
+	}
+}
+
+func TestSaveRoundTrip(t *testing.T) {
+	f, err := Parse([]byte(validJSON))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "categories.json")
+	if err := Save(path, f); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	back, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load after Save: %v", err)
+	}
+	if len(back.Categories) != 2 || back.Categories[0].Name != "cdn" {
+		t.Fatalf("round trip categories = %v", back.Names())
+	}
+	if back.Categories[0].Targets[0].Host != "1.1.1.1" || back.Categories[0].Targets[0].Port != 443 {
+		t.Fatalf("round trip target = %+v", back.Categories[0].Targets[0])
 	}
 }

@@ -323,3 +323,47 @@ func TestRunTargetsRankingAndDedupe(t *testing.T) {
 		t.Fatalf("failed target: score=%v grade=%q, want 0/Failed", results[1].Score, results[1].Grade)
 	}
 }
+
+func TestRunOneTCP(t *testing.T) {
+	port, closeFn := startTCPEcho(t)
+	defer closeFn()
+	r := RunOne(context.Background(), config.Target{Host: "127.0.0.1", Port: port, Method: "tcp"}, testOptions())
+	if r.Status != StatusOK {
+		t.Fatalf("status = %q (%s), want OK", r.Status, r.Error)
+	}
+	if r.Score <= 0 || r.Grade == "" {
+		t.Fatalf("score = %v grade = %q, want a scored result", r.Score, r.Grade)
+	}
+	// RunOne does not rank on its own; RankResults does that once
+	// all targets of a run are in.
+	if r.Rank != 0 {
+		t.Fatalf("rank = %d, want 0 (unranked until RankResults)", r.Rank)
+	}
+}
+
+func TestApplyICMPHints(t *testing.T) {
+	results := []*Result{
+		{Target: config.Target{Host: "example.com", Port: 0, Method: "icmp"}, Status: StatusTimeout},
+		{Target: config.Target{Host: "example.com", Port: 443, Method: "https"}, Status: StatusOK, Received: 3},
+		{Target: config.Target{Host: "other.com", Port: 0, Method: "icmp"}, Status: StatusUnreachable},
+		{Target: config.Target{Host: "other.com", Port: 80, Method: "tcp"}, Status: StatusTimeout},
+		{Target: config.Target{Host: "EXAMPLE.com", Port: 0, Method: "icmp"}, Status: StatusFailed},
+		{Target: config.Target{Host: "plain.com", Port: 0, Method: "icmp"}, Status: StatusOK, Received: 3},
+	}
+	ApplyICMPHints(results)
+	if results[0].Note == "" {
+		t.Error("ICMP timeout with HTTPS OK on the same host should get the hint")
+	}
+	if results[2].Note != "" {
+		t.Error("ICMP unreachable with no OK result on the same host should not get the hint")
+	}
+	if results[4].Note == "" {
+		t.Error("ICMP failed with OK on the same host (case-insensitive) should get the hint")
+	}
+	if results[5].Note != "" {
+		t.Error("a successful ICMP result should not get the hint")
+	}
+	if want := "host answers on other methods — ICMP may be blocked (e.g. by a VPN)"; results[0].Note != want {
+		t.Errorf("hint = %q, want %q", results[0].Note, want)
+	}
+}
