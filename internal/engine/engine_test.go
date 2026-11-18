@@ -3,11 +3,13 @@ package engine
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -69,6 +71,25 @@ func TestTCPTestRefused(t *testing.T) {
 	}
 	if r.Received != 0 {
 		t.Fatalf("received = %d, want 0", r.Received)
+	}
+}
+
+func TestIsRefusedWindowsError(t *testing.T) {
+	// Windows (connectex) words it differently from Unix — the
+	// classifier must recognise both, or the Windows CI run
+	// reports Unreachable instead of Refused for a closed port.
+	cases := []error{
+		errors.New("dial tcp 127.0.0.1:54876: connectex: No connection could be made because the target machine actively refused it."),
+		errors.New("dial tcp 127.0.0.1:54876: connect: connection refused"),
+		&os.SyscallError{Syscall: "connect", Err: syscall.ECONNREFUSED},
+	}
+	for _, err := range cases {
+		if !isRefused(err) {
+			t.Fatalf("isRefused(%v) = false, want true", err)
+		}
+	}
+	if isRefused(errors.New("dial tcp 127.0.0.1:54876: connect: connection timed out")) {
+		t.Fatal("isRefused(timeout error) = true, want false")
 	}
 }
 

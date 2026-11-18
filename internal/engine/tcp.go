@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/erffanhub-00/net-tester/internal/config"
@@ -95,8 +96,17 @@ func resolveHost(ctx context.Context, host string, timeout time.Duration) (strin
 	return addrs[0], ms, nil
 }
 
+// isRefused reports whether a dial error means the host is reachable
+// but the port is closed. Unix says "connection refused"; Windows
+// (connectex) says "the target machine actively refused it" — the
+// errno is ECONNREFUSED (WSAECONNREFUSED on Windows) in both cases,
+// so check that first and fall back to the word "refused".
 func isRefused(err error) bool {
-	return strings.Contains(err.Error(), "connection refused")
+	var errno syscall.Errno
+	if errors.As(err, &errno) && errno == syscall.ECONNREFUSED {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "refused")
 }
 
 func isTimeout(err error) bool {
