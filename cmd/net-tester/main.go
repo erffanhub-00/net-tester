@@ -21,7 +21,7 @@ import (
 	"github.com/erffanhub-00/net-tester/internal/report"
 )
 
-const version = "2.0.0"
+const version = "2.1.0"
 
 func main() {
 	setupConsole()
@@ -29,7 +29,8 @@ func main() {
 	categoryFlag := flag.String("category", "", "Category to test (comma-separated names, or \"all\"); required with -no-menu")
 	packetsFlag := flag.Int("packets", 10, "Samples per target (1-200)")
 	configFlag := flag.String("config", "", "Categories file (default: ./categories.json, else the built-in seed)")
-	outputFlag := flag.String("output-dir", "output", "Directory for CSV and JSON exports")
+	outputFlag := flag.String("output-dir", "output", "Directory for result files (only used with -export)")
+	exportFlag := flag.String("export", "", "Write result files: csv, json or both (default: no files are written)")
 	noMenuFlag := flag.Bool("no-menu", false, "Run without the interactive menu (requires -category)")
 	workersFlag := flag.Int("workers", 10, "Parallel targets (1-50)")
 	pingTimeoutFlag := flag.Int("ping-timeout-ms", 2000, "Per-reply ping timeout in ms (100-60000)")
@@ -41,7 +42,7 @@ func main() {
 	versionFlag := flag.Bool("version", false, "Print the version and exit")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "net-tester %s — network tester (ping, TCP, HTTP/HTTPS, DNS)\n\n", version)
-		fmt.Fprintf(os.Stderr, "Usage:\n  net-tester                  interactive menu\n  net-tester -no-menu -category cdn\n  net-tester -no-menu -category cdn,dns -packets 20\n\nFlags:\n")
+		fmt.Fprintf(os.Stderr, "Usage:\n  net-tester                  interactive menu\n  net-tester -no-menu -category cdn\n  net-tester -no-menu -category cdn,dns -packets 20\n  net-tester -no-menu -category cdn -export both\n\nFlags:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExit codes: 0 all targets OK, 1 a target failed, 2 usage error.\n")
 	}
@@ -54,6 +55,14 @@ func main() {
 
 	// Validate numeric flags before doing anything else.
 	opts, err := buildOptions(*packetsFlag, *workersFlag, *pingTimeoutFlag, *tcpTimeoutFlag, *httpTimeoutFlag, *dnsTimeoutFlag, *proxyFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		flag.Usage()
+		os.Exit(2)
+	}
+
+	// Export is opt-in: no files are written unless the user asks.
+	wantCSV, wantJSON, err := parseExportFlag(*exportFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		flag.Usage()
@@ -77,16 +86,33 @@ func main() {
 
 	ctx := context.Background()
 	if *noMenuFlag {
-		os.Exit(runCLI(ctx, cfg, opts, *categoryFlag, *outputFlag, *quietFlag, nc))
+		os.Exit(runCLI(ctx, cfg, opts, *categoryFlag, *outputFlag, *quietFlag, nc, wantCSV, wantJSON))
 	}
 	if *categoryFlag != "" {
 		fmt.Fprintln(os.Stderr, "note: -category is only used with -no-menu; starting the interactive menu")
 	}
 	exporter := func(dir, cat string, res []*engine.Result) (string, string, error) {
-		return report.ExportWithNetwork(dir, cat, res, nc)
+		return report.ExportSelected(dir, cat, res, nc, wantCSV, wantJSON)
 	}
 	os.Exit(menu.Run(ctx, cfg, opts, *outputFlag, os.Stdin, os.Stdout,
 		engine.RunTargets, exporter))
+}
+
+// parseExportFlag parses -export: "" (no files), "csv", "json" or
+// "both" (case-insensitive, surrounding spaces ignored).
+func parseExportFlag(s string) (csv, json bool, err error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "":
+		return false, false, nil
+	case "csv":
+		return true, false, nil
+	case "json":
+		return false, true, nil
+	case "both":
+		return true, true, nil
+	default:
+		return false, false, fmt.Errorf("-export must be csv, json or both, got %q", s)
+	}
 }
 
 func buildOptions(packets, workers, pingMs, tcpMs, httpMs, dnsMs int, proxy string) (engine.Options, error) {
@@ -129,7 +155,8 @@ func loadConfig(flagPath string) (*config.File, error) {
 }
 
 // runCLI is the non-interactive mode: -no-menu -category <names>.
-func runCLI(ctx context.Context, cfg *config.File, o engine.Options, categoryFlag, outDir string, quiet bool, nc engine.NetworkContext) int {
+// Files are written only when wantCSV/wantJSON say so (-export).
+func runCLI(ctx context.Context, cfg *config.File, o engine.Options, categoryFlag, outDir string, quiet bool, nc engine.NetworkContext, wantCSV, wantJSON bool) int {
 	if strings.TrimSpace(categoryFlag) == "" {
 		fmt.Fprintln(os.Stderr, "error: -no-menu requires -category (e.g. -category cdn or -category all)")
 		return 2
@@ -167,13 +194,22 @@ func runCLI(ctx context.Context, cfg *config.File, o engine.Options, categoryFla
 		report.Chart(os.Stdout, results)
 		report.Summary(os.Stdout, results)
 	}
-	csvPath, jsonPath, err := report.ExportWithNetwork(outDir, catName, results, nc)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "export failed: %v\n", err)
-		return 1
-	}
-	if !quiet {
-		fmt.Printf("Saved: %s\n       %s\n", csvPath, jsonPath)
+	if wantCSV || wantJSON {
+		csvPath, jsonPath, err := report.ExportSelected(outDir, catName, results, nc, wantCSV, wantJSON)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "export failed: %v\n", err)
+			return 1
+		}
+		if !quiet {
+			switch {
+			case csvPath != "" && jsonPath != "":
+				fmt.Printf("Saved: %s\n       %s\n", csvPath, jsonPath)
+			case csvPath != "":
+				fmt.Printf("Saved: %s\n", csvPath)
+			case jsonPath != "":
+				fmt.Printf("Saved: %s\n", jsonPath)
+			}
+		}
 	}
 	if engine.AnyFailed(results) {
 		return 1

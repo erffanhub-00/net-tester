@@ -193,23 +193,39 @@ type networkDoc struct {
 	Notes         []string `json:"notes,omitempty"`
 }
 
-// ExportWithNetwork is Export, plus the detected network context
-// (proxy / VPN interfaces) and its run-level notes in the JSON.
-func ExportWithNetwork(dir, category string, results []*engine.Result, nc engine.NetworkContext) (csvPath, jsonPath string, err error) {
+// ExportSelected writes only the requested formats (timestamped
+// files in dir) and returns their paths — "" for a format not
+// requested. When both are false it writes nothing and returns
+// ("", "", nil) without even creating the directory, so callers can
+// honour "no export unless the user asked for it".
+func ExportSelected(dir, category string, results []*engine.Result, nc engine.NetworkContext, wantCSV, wantJSON bool) (csvPath, jsonPath string, err error) {
+	if !wantCSV && !wantJSON {
+		return "", "", nil
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", "", fmt.Errorf("cannot create output dir: %w", err)
 	}
 	stamp := time.Now().Format("20060102-150405")
 	base := "net-tester_" + category + "_" + stamp
-	csvPath = filepath.Join(dir, base+".csv")
-	jsonPath = filepath.Join(dir, base+".json")
-	if err := WriteCSV(csvPath, results); err != nil {
-		return "", "", err
+	if wantCSV {
+		csvPath = filepath.Join(dir, base+".csv")
+		if err := WriteCSV(csvPath, results); err != nil {
+			return "", "", err
+		}
 	}
-	if err := WriteJSON(jsonPath, category, results, nc); err != nil {
-		return "", "", err
+	if wantJSON {
+		jsonPath = filepath.Join(dir, base+".json")
+		if err := WriteJSON(jsonPath, category, results, nc); err != nil {
+			return "", "", err
+		}
 	}
 	return csvPath, jsonPath, nil
+}
+
+// ExportWithNetwork is Export, plus the detected network context
+// (proxy / VPN interfaces) and its run-level notes in the JSON.
+func ExportWithNetwork(dir, category string, results []*engine.Result, nc engine.NetworkContext) (csvPath, jsonPath string, err error) {
+	return ExportSelected(dir, category, results, nc, true, true)
 }
 
 var csvHeader = []string{

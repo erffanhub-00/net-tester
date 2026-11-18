@@ -172,3 +172,61 @@ func TestExportWithNetwork(t *testing.T) {
 		t.Fatalf("plain Export should omit network, got %+v", doc2.Network)
 	}
 }
+
+// TestExportSelected checks that only the requested formats are
+// written — and that asking for nothing writes nothing at all,
+// not even the output directory.
+func TestExportSelected(t *testing.T) {
+	cases := []struct {
+		name     string
+		wantCSV  bool
+		wantJSON bool
+	}{
+		{"csv only", true, false},
+		{"json only", false, true},
+		{"both", true, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "out")
+			csvPath, jsonPath, err := ExportSelected(dir, "cdn", sampleResults(), engine.NetworkContext{}, c.wantCSV, c.wantJSON)
+			if err != nil {
+				t.Fatalf("ExportSelected: %v", err)
+			}
+			if c.wantCSV {
+				if csvPath == "" {
+					t.Fatal("csv path empty")
+				}
+				if _, err := os.Stat(csvPath); err != nil {
+					t.Fatalf("csv not written: %v", err)
+				}
+			} else if csvPath != "" {
+				t.Fatalf("csv path %q returned, but csv was not requested", csvPath)
+			}
+			if c.wantJSON {
+				if jsonPath == "" {
+					t.Fatal("json path empty")
+				}
+				if _, err := os.Stat(jsonPath); err != nil {
+					t.Fatalf("json not written: %v", err)
+				}
+			} else if jsonPath != "" {
+				t.Fatalf("json path %q returned, but json was not requested", jsonPath)
+			}
+		})
+	}
+
+	t.Run("nothing requested", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "out")
+		csvPath, jsonPath, err := ExportSelected(dir, "cdn", sampleResults(), engine.NetworkContext{}, false, false)
+		if err != nil {
+			t.Fatalf("ExportSelected: %v", err)
+		}
+		if csvPath != "" || jsonPath != "" {
+			t.Fatalf("paths = %q/%q, want empty", csvPath, jsonPath)
+		}
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("output dir was created, but nothing was requested")
+		}
+	})
+}

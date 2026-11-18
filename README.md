@@ -73,7 +73,8 @@ Built-in categories: `cdn`, `dns`, `cloud`, `custom`. Duplicate targets (same ho
 -category string        Category to test (comma-separated names, or "all"); required with -no-menu
 -packets int             Samples per target (1-200, default 10)
 -config string           Categories file (default: ./categories.json, else the built-in seed)
--output-dir string       Directory for CSV and JSON exports (default "output")
+-output-dir string       Directory for result files (only used with -export, default "output")
+-export string           Write result files: csv, json or both (default: no files are written)
 -no-menu                 Run without the interactive menu (requires -category)
 -workers int              Parallel targets (1-50, default 10)
 -ping-timeout-ms int     Per-reply ping timeout in ms (100-60000, default 2000)
@@ -88,7 +89,10 @@ Built-in categories: `cdn`, `dns`, `cloud`, `custom`. Duplicate targets (same ho
 
 ## Output
 
-Every run writes timestamped files to `output/`:
+Nothing is written to disk unless you ask for it. Pass `-export csv`,
+`-export json` or `-export both` (in the menu, the same `-export` flag
+at launch) and the run writes timestamped files to `output/` (or
+`-output-dir`):
 
 ```
 output/net-tester_cdn_20261118-183000.csv

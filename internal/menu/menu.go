@@ -22,7 +22,8 @@ import (
 // the menu can be tested without the network.
 type Runner func(ctx context.Context, targets []config.Target, o engine.Options) []*engine.Result
 
-// Exporter writes the CSV and JSON files.
+// Exporter writes the requested result files. It returns "" for a
+// format that was not requested (no file written for it).
 type Exporter func(dir, category string, results []*engine.Result) (string, string, error)
 
 // Run is the interactive loop. It returns the process exit code:
@@ -70,8 +71,16 @@ func Run(ctx context.Context, cfg *config.File, o engine.Options, outDir string,
 		if err != nil {
 			fmt.Fprintf(out, "Export failed: %v\n", err)
 			lastExit = 1
-		} else {
-			fmt.Fprintf(out, "Saved: %s\n       %s\n", csvPath, jsonPath)
+		} else if csvPath != "" || jsonPath != "" {
+			// Print only the files actually written.
+			switch {
+			case csvPath != "" && jsonPath != "":
+				fmt.Fprintf(out, "Saved: %s\n       %s\n", csvPath, jsonPath)
+			case csvPath != "":
+				fmt.Fprintf(out, "Saved: %s\n", csvPath)
+			default:
+				fmt.Fprintf(out, "Saved: %s\n", jsonPath)
+			}
 		}
 		if engine.AnyFailed(results) {
 			lastExit = 1

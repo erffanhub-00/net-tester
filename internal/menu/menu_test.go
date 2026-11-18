@@ -103,3 +103,32 @@ func TestMenuExitCodeOnFailure(t *testing.T) {
 		t.Fatalf("exit code = %d, want 1 (a target failed)", code)
 	}
 }
+
+// TestMenuNoExportPrintsNothing checks that when the exporter wrote
+// no files (no -export given), the menu prints no "Saved:" line.
+func TestMenuNoExportPrintsNothing(t *testing.T) {
+	report.ColorEnabled = false
+	in := bytes.NewBufferString("1\n\n\n0\n")
+	var out bytes.Buffer
+	res := []*engine.Result{{
+		Target:  config.Target{Host: "a.example", Method: "icmp"},
+		Status:  engine.StatusOK,
+		Samples: []float64{10, 11},
+		Sent:    2, Received: 2,
+		Avg: 10.5, Score: 95, Grade: "Excellent", Rank: 1,
+	}}
+	noExport := func(dir, category string, results []*engine.Result) (string, string, error) {
+		return "", "", nil
+	}
+	code := Run(context.Background(), testConfig(), engine.DefaultOptions(), "output", in, &out, fakeRunner(res), noExport)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	text := out.String()
+	if strings.Contains(text, "Saved:") {
+		t.Fatalf("menu printed a Saved: line, but nothing was exported:\n%s", text)
+	}
+	if !strings.Contains(text, "a.example") {
+		t.Fatalf("menu output missing the result row:\n%s", text)
+	}
+}
