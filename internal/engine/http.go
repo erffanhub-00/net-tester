@@ -55,9 +55,22 @@ func httpTest(ctx context.Context, t config.Target, o Options) *Result {
 		}
 	}
 
+	// dialMs holds the TCP connect time of the current request,
+	// measured in DialContext below.
+	var dialMs float64
 	transport := &http.Transport{
 		DisableKeepAlives: true,
 		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true}, // validity comes from probeTLS
+		// Measure the TCP connect in the dialer itself: httptrace
+		// ConnectStart/ConnectDone do not fire on every platform
+		// (Windows CI measured connect=0 for localhost), while the
+		// dial always runs, so this is the reliable measurement.
+		DialContext: func(dialCtx context.Context, network, addr string) (net.Conn, error) {
+			start := time.Now()
+			conn, err := (&net.Dialer{Timeout: o.HTTPTimeout}).DialContext(dialCtx, network, addr)
+			dialMs = time.Since(start).Seconds() * 1000
+			return conn, err
+		},
 	}
 	if o.Proxy != "" {
 		if pu, err := url.Parse(o.Proxy); err == nil {
@@ -72,22 +85,12 @@ func httpTest(ctx context.Context, t config.Target, o Options) *Result {
 		if ctx.Err() != nil {
 			break
 		}
-		var connMs, ttfbMs float64
-		var dnsStart, connStart, tlsStart, firstByte time.Time
+		var ttfbMs float64
+		var firstByte time.Time
+		dialMs = 0
 		trace := &httptrace.ClientTrace{
-			DNSStart:          func(httptrace.DNSStartInfo) { dnsStart = time.Now() },
-			DNSDone:           func(httptrace.DNSDoneInfo) {},
-			ConnectStart:      func(_, _ string) { connStart = time.Now() },
-			ConnectDone:       func(_, _ string, _ error) { connMs = time.Since(connStart).Seconds() * 1000 },
-			TLSHandshakeStart: func() { tlsStart = time.Now() },
-			TLSHandshakeDone:  func(tls.ConnectionState, error) {},
-			GotFirstResponseByte: func() {
-				firstByte = time.Now()
-				_ = dnsStart
-				_ = tlsStart
-			},
+			GotFirstResponseByte: func() { firstByte = time.Now() },
 		}
-		_ = dnsStart
 		reqCtx := httptrace.WithClientTrace(ctx, trace)
 		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, targetURL, nil)
 		if err != nil {
@@ -107,12 +110,15 @@ func httpTest(ctx context.Context, t config.Target, o Options) *Result {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 		ttfbMs = firstByte.Sub(start).Seconds() * 1000
-		if ttfbMs < 0 {
+		if ttfbMs <= 0 {
+			// First byte was already in when Do returned (or the
+			// trace hook did not fire); time-to-headers is the
+			// honest fallback.
 			ttfbMs = total
 		}
 		r.HTTPDistribution[resp.StatusCode]++
 		r.Samples = append(r.Samples, total)
-		connectTimes = append(connectTimes, connMs)
+		connectTimes = append(connectTimes, dialMs)
 		ttfbTimes = append(ttfbTimes, ttfbMs)
 		totalTimes = append(totalTimes, total)
 	}
