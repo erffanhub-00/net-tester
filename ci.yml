@@ -1,0 +1,33 @@
+# CI for net-tester (Go, no CGO, stdlib only)
+#
+# This file ships at the repo root; move it to .github/workflows/ci.yml
+# via the website to enable it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Build Windows binary
+        if: matrix.os == 'windows-latest'
+        run: go build -o net-tester-windows-amd64.exe ./cmd/net-tester

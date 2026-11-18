@@ -1,0 +1,88 @@
+{
+  "categories": [
+    {
+      "description": "CDN endpoints",
+      "name": "cdn",
+      "targets": [
+        {
+          "host": "cdn.jsdelivr.net",
+          "method": "https",
+          "port": 443
+        },
+        {
+          "host": "cdnjs.cloudflare.com",
+          "method": "https",
+          "port": 443
+        },
+        {
+          "host": "unpkg.com",
+          "method": "https",
+          "port": 443
+        }
+      ]
+    },
+    {
+      "description": "Public DNS resolvers (real DNS resolution check)",
+      "name": "dns",
+      "targets": [
+        {
+          "host": "1.1.1.1",
+          "method": "dns",
+          "port": 0
+        },
+        {
+          "host": "8.8.8.8",
+          "method": "dns",
+          "port": 0
+        },
+        {
+          "host": "9.9.9.9",
+          "method": "dns",
+          "port": 0
+        },
+        {
+          "host": "208.67.222.222",
+          "method": "dns",
+          "port": 0
+        }
+      ]
+    },
+    {
+      "description": "Cloud provider endpoints",
+      "name": "cloud",
+      "targets": [
+        {
+          "host": "aws.amazon.com",
+          "method": "https",
+          "port": 443
+        },
+        {
+          "host": "azure.microsoft.com",
+          "method": "https",
+          "port": 443
+        },
+        {
+          "host": "cloud.google.com",
+          "method": "https",
+          "port": 443
+        }
+      ]
+    },
+    {
+      "description": "Example targets - edit categories.json to add your own",
+      "name": "custom",
+      "targets": [
+        {
+          "host": "example.com",
+          "method": "icmp",
+          "port": 0
+        },
+        {
+          "host": "google.com",
+          "method": "icmp",
+          "port": 0
+        }
+      ]
+    }
+  ]
+}

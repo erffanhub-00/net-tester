@@ -1,0 +1,13 @@
+# Binaries
+net-tester
+net-tester-*
+*.exe
+
+# Build output
+dist/
+
+# Test output and exports
+output/
+
+# Go
+*.test
